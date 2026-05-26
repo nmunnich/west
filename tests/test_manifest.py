@@ -2649,6 +2649,69 @@ def test_import_map_filter_propagation(manifest_repo):
     assert projects[1].name == 'n2'
 
 
+def test_import_map_name_allowlist_filters_deeper_project_imports(manifest_repo):
+    # Demonstrate that an allowlist on an imported project propagates
+    # to deeper project imports.
+    #
+    # Chain:
+    # west.yml -> A -> B -> C 
+    #
+    # The top-level manifest imports A with a name-allowlist that
+    # includes B. This allows A to be imported, but stops B from importing C
+
+    with open(manifest_repo / 'west.yml', 'w') as f:
+        f.write('''\
+        manifest:
+          projects:
+          - name: a
+            url: a-url
+            import:
+              name-allowlist:
+              - b
+        ''')
+
+    a = manifest_repo.topdir / 'a'
+    create_repo(a)
+    create_branch(a, 'manifest-rev', checkout=True)
+    add_commit(
+        a,
+        'add a/west.yml',
+        files={
+            'west.yml': '''\
+                        manifest:
+                          projects:
+                          - name: b
+                            url: b-url
+                            import: true
+                        '''
+        },
+    )
+    checkout_branch(a, 'master')
+
+    b = manifest_repo.topdir / 'b'
+    create_repo(b)
+    create_branch(b, 'manifest-rev', checkout=True)
+    add_commit(
+        b,
+        'add b/west.yml',
+        files={
+            'west.yml': '''\
+                        manifest:
+                          projects:
+                          - name: c
+                            url: c-url
+                        '''
+        },
+    )
+    checkout_branch(b, 'master')
+
+    names = [project.name for project in MF().projects]
+
+    assert 'a' in names
+    assert 'b' in names
+    assert 'c' not in names
+
+
 def test_import_map_filter_propagation_legacy(manifest_repo):
     # This tests the legacy support for blocklists and allowlists
     # through the blacklist and whitelist keywords which cannot
